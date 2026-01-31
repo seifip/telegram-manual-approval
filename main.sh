@@ -11,11 +11,14 @@ REJECT_BUTTON="Reject"
 APPROVED_TEXT="Approved!"
 REJECTED_TEXT="Rejected!"
 TIMEOUT_TEXT="Timeout!"
-ALLOW_RETRY_ON_TIMEOUT="false"
-RETRY_BUTTON="Retry"
+ALLOW_GITHUB_RERUN_ON_TIMEOUT="true"
+RERUN_BUTTON="Rerun workflow"
+RERUN_TEXT="Rerun requested."
+RERUN_FAILED_TEXT="Rerun failed."
+GH_TOKEN=""
 
 # Define long options
-LONGOPTS=TELEGRAM_KEY:,TELEGRAM_CHAT_ID:,UPDATE_REQUESTS:,APPROVAL_TEXT:,APPROVAL_BUTTON:,REJECT_BUTTON:,APPROVED_TEXT:,REJECTED_TEXT:,TIMEOUT_TEXT:,ALLOW_RETRY_ON_TIMEOUT:,RETRY_BUTTON:
+LONGOPTS=TELEGRAM_KEY:,TELEGRAM_CHAT_ID:,UPDATE_REQUESTS:,APPROVAL_TEXT:,APPROVAL_BUTTON:,REJECT_BUTTON:,APPROVED_TEXT:,REJECTED_TEXT:,TIMEOUT_TEXT:,ALLOW_GITHUB_RERUN_ON_TIMEOUT:,RERUN_BUTTON:,RERUN_TEXT:,RERUN_FAILED_TEXT:,GITHUB_TOKEN:
 
 VALID_ARGS=$(getopt --longoptions $LONGOPTS -- "$@")
 if [[ $? -ne 0 ]]; then
@@ -68,12 +71,24 @@ while true; do
       TIMEOUT_TEXT="$2"
       shift 2
       ;;
-    --ALLOW_RETRY_ON_TIMEOUT)
-      ALLOW_RETRY_ON_TIMEOUT="$2"
+    --ALLOW_GITHUB_RERUN_ON_TIMEOUT)
+      ALLOW_GITHUB_RERUN_ON_TIMEOUT="$2"
       shift 2
       ;;
-    --RETRY_BUTTON)
-      RETRY_BUTTON="$2"
+    --RERUN_BUTTON)
+      RERUN_BUTTON="$2"
+      shift 2
+      ;;
+    --RERUN_TEXT)
+      RERUN_TEXT="$2"
+      shift 2
+      ;;
+    --RERUN_FAILED_TEXT)
+      RERUN_FAILED_TEXT="$2"
+      shift 2
+      ;;
+    --GITHUB_TOKEN)
+      GH_TOKEN="$2"
       shift 2
       ;;
     --)
@@ -125,6 +140,16 @@ echo "Session ID: $SESSION_ID"
 
 MESSAGE_ID=""
 
+getGithubToken() {
+  if [ -n "$GH_TOKEN" ]; then
+    echo "$GH_TOKEN"
+  elif [ -n "$GITHUB_TOKEN" ]; then
+    echo "$GITHUB_TOKEN"
+  else
+    echo ""
+  fi
+}
+
 sendMessage() {
   local SENT=$(curl -s --location --request POST "https://api.telegram.org/bot$TELEGRAM_KEY/sendMessage" \
     --header 'Content-Type: application/json' \
@@ -156,22 +181,22 @@ getUpdates() {
         "allowed_updates": ["callback_query"]
     }')
   
-  # search for a:$SESSION_ID, r:$SESSION_ID, or t:$SESSION_ID as: "data": "r:xxxxxxxxx"
+  # search for a:$SESSION_ID, r:$SESSION_ID, or g:$SESSION_ID as: "data": "r:xxxxxxxxx"
   local DATA=$(echo $UPDATES | awk -F '"data":' '{print $2}' | awk -F '}' '{print $1}')
   local APPROVE=$(echo $DATA | grep -o "a:$SESSION_ID")
   local REJECT=$(echo $DATA | grep -o "r:$SESSION_ID")
-  local RETRY=""
-  if [ "$ALLOW_RETRY_ON_TIMEOUT" = "true" ]; then
-    RETRY=$(echo $DATA | grep -o "t:$SESSION_ID")
+  local RERUN=""
+  if [ "$ALLOW_GITHUB_RERUN_ON_TIMEOUT" = "true" ]; then
+    RERUN=$(echo $DATA | grep -o "g:$SESSION_ID")
   fi
 
-  if [ -z "$APPROVE" ] && [ -z "$REJECT" ] && [ -z "$RETRY" ]; then
+  if [ -z "$APPROVE" ] && [ -z "$REJECT" ] && [ -z "$RERUN" ]; then
     echo 0
   elif [ -n "$APPROVE" ]; then
     echo 1
   elif [ -n "$REJECT" ]; then
     echo 2
-  elif [ -n "$RETRY" ]; then
+  elif [ -n "$RERUN" ]; then
     echo 3
   fi
 }
@@ -201,8 +226,20 @@ updateMessageClearButtons() {
     }'
 }
 
-updateMessageWithRetryButton() {
+buildTimeoutButtons() {
+  local buttons=""
+
+  if [ "$ALLOW_GITHUB_RERUN_ON_TIMEOUT" = "true" ]; then
+    buttons="{\"text\": \"${RERUN_BUTTON}\", \"callback_data\": \"g:${SESSION_ID}\"}"
+  fi
+
+  echo "$buttons"
+}
+
+updateMessageWithTimeoutButtons() {
   local text="$1"
+  local buttons
+  buttons=$(buildTimeoutButtons)
 
   curl -s --location --request POST "https://api.telegram.org/bot$TELEGRAM_KEY/editMessageText" \
     --header 'Content-Type: application/json' \
@@ -213,11 +250,48 @@ updateMessageWithRetryButton() {
         "reply_markup": {
             "inline_keyboard": [
                 [
-                    {"text": "'"$RETRY_BUTTON"'", "callback_data": "t:'"$SESSION_ID"'"}
+                    '"$buttons"'
                 ]
             ]
         }
     }'
+}
+
+timeoutWaitLabel() {
+  if [ "$ALLOW_GITHUB_RERUN_ON_TIMEOUT" = "true" ]; then
+    echo "rerun"
+  else
+    echo "response"
+  fi
+}
+
+rerunWorkflow() {
+  local token="$1"
+
+  if [ -z "$token" ]; then
+    echo "Missing GitHub token for rerun"
+    return 2
+  fi
+  if [ -z "$GITHUB_REPOSITORY" ] || [ -z "$GITHUB_RUN_ID" ]; then
+    echo "Missing GITHUB_REPOSITORY or GITHUB_RUN_ID"
+    return 3
+  fi
+
+  local status
+  status=$(curl -s -o /dev/null -w "%{http_code}" \
+    --location \
+    --request POST \
+    --header "Authorization: Bearer $token" \
+    --header "Accept: application/vnd.github+json" \
+    --header "X-GitHub-Api-Version: 2022-11-28" \
+    "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/rerun")
+
+  if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
+    return 0
+  fi
+
+  echo "Rerun request failed with status $status"
+  return 1
 }
 
 # Send message
@@ -240,22 +314,22 @@ while true; do
     exit 1
   elif [ $RESULT -eq 3 ]; then
     if [ "$STATE" = "timeout" ]; then
-      echo "Retry requested"
-      updateMessageClearButtons "$TIMEOUT_TEXT"
-      SESSION_ID=$(generate_random_string)
-      echo "Session ID: $SESSION_ID"
-      sendMessage
-      STATE="waiting"
-      UPDATE_REQUESTS_COUNTER=0
-      continue
+      echo "Rerun requested"
+      token=$(getGithubToken)
+      if rerunWorkflow "$token"; then
+        updateMessageClearButtons "$RERUN_TEXT"
+      else
+        updateMessageClearButtons "$RERUN_FAILED_TEXT"
+      fi
+      exit 1
     fi
   fi
 
   if [ "$STATE" = "waiting" ]; then
     if [ $UPDATE_REQUESTS_COUNTER -gt $UPDATE_REQUESTS ]; then
       echo "Update requests limit reached"
-      if [ "$ALLOW_RETRY_ON_TIMEOUT" = "true" ]; then
-        updateMessageWithRetryButton "$TIMEOUT_TEXT"
+      if [ "$ALLOW_GITHUB_RERUN_ON_TIMEOUT" = "true" ]; then
+        updateMessageWithTimeoutButtons "$TIMEOUT_TEXT"
         STATE="timeout"
         UPDATE_REQUESTS_COUNTER=0
         continue
@@ -266,7 +340,7 @@ while true; do
     fi
   else
     if [ $UPDATE_REQUESTS_COUNTER -gt $UPDATE_REQUESTS ]; then
-      echo "Retry window expired"
+      echo "Rerun window expired"
       updateMessageClearButtons "$TIMEOUT_TEXT"
       exit 1
     fi
@@ -275,7 +349,7 @@ while true; do
   if [ "$STATE" = "waiting" ]; then
     echo "Waiting for approve or reject $UPDATE_REQUESTS_COUNTER/$UPDATE_REQUESTS"
   else
-    echo "Waiting for retry $UPDATE_REQUESTS_COUNTER/$UPDATE_REQUESTS"
+    echo "Waiting for $(timeoutWaitLabel) $UPDATE_REQUESTS_COUNTER/$UPDATE_REQUESTS"
   fi
 
   sleep 1

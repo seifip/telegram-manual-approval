@@ -35,8 +35,11 @@ Configure the inputs to customize the Telegram message:
 - `APPROVED_TEXT`: Message to indicate successful approval.
 - `REJECTED_TEXT`: Message to indicate successful rejection.
 - `TIMEOUT_TEXT`: Message to indicate a timeout if no response is received.
-- `ALLOW_RETRY_ON_TIMEOUT`: If `true`, the action will edit the timed-out message to include a retry button that resends a new approval request.
-- `RETRY_BUTTON`: Text for the retry button shown when `ALLOW_RETRY_ON_TIMEOUT` is enabled.
+- `ALLOW_GITHUB_RERUN_ON_TIMEOUT`: If `true`, the action will edit the timed-out message to include a GitHub workflow rerun button. Defaults to `true`.
+- `RERUN_BUTTON`: Text for the rerun button shown when `ALLOW_GITHUB_RERUN_ON_TIMEOUT` is enabled.
+- `RERUN_TEXT`: Message shown after a rerun request is sent to GitHub.
+- `RERUN_FAILED_TEXT`: Message shown if the rerun request fails.
+- `GITHUB_TOKEN`: GitHub token used to rerun workflows (defaults to the workflow `github.token` if available).
 - `UPDATE_REQUESTS`: The number of update requests the action will make to check for manual approval or rejection via Telegram. This is not a strict timeout but rather a count of checks, with each request occurring approximately every 1 to 2 seconds.
 
 You can also set a timeout limit for the approval step using `timeout-minutes` in your workflow file:
@@ -55,11 +58,17 @@ The `timeout-minutes` parameter in your workflow determines the maximum duration
 
 Additionally, the `UPDATE_REQUESTS` input is not a direct timeout setting but rather represents the limit of update checks the action will perform. It is set to a default of 60, which typically corresponds to a duration of 60 to 120 seconds depending on network conditions and server response times, as each update request is expected to occur roughly every 1 to 2 seconds. Adjust the `UPDATE_REQUESTS` value according to how long you want the action to wait for a response in Telegram before considering it a timeout situation and sending the `TIMEOUT_TEXT` message.
 
-If `ALLOW_RETRY_ON_TIMEOUT` is enabled, the action will continue running after the first timeout and wait for a retry click (up to another `UPDATE_REQUESTS` checks). Clicking retry sends a fresh approval request so you can approve without re-running the workflow from GitHub.
+If `ALLOW_GITHUB_RERUN_ON_TIMEOUT` is enabled, the action will show a rerun button and will call the GitHub API to rerun the current workflow run. This requires a token with `actions: write` permission (the default `github.token` works if you set permissions).
+
+Example permissions:
+```yaml
+permissions:
+  actions: write
+```
 
 ### Permissions
 
-Ensure that the GitHub token used by the action has permissions to send messages via Telegram Bot API. You may not need to set any special permissions in your GitHub workflow for this action unless your workflow requires additional steps that interact with the GitHub environment.
+No special GitHub permissions are required for Telegram messaging. If you enable GitHub rerun on timeout, grant `actions: write` to the workflow token.
 
 ### Quick example
 ```yaml
