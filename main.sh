@@ -11,9 +11,11 @@ REJECT_BUTTON="Reject"
 APPROVED_TEXT="Approved!"
 REJECTED_TEXT="Rejected!"
 TIMEOUT_TEXT="Timeout!"
+ALLOW_RETRY_ON_TIMEOUT="false"
+RETRY_BUTTON="Retry"
 
 # Define long options
-LONGOPTS=TELEGRAM_KEY:,TELEGRAM_CHAT_ID:,UPDATE_REQUESTS:,APPROVAL_TEXT:,APPROVAL_BUTTON:,REJECT_BUTTON:,APPROVED_TEXT:,REJECTED_TEXT:,TIMEOUT_TEXT:
+LONGOPTS=TELEGRAM_KEY:,TELEGRAM_CHAT_ID:,UPDATE_REQUESTS:,APPROVAL_TEXT:,APPROVAL_BUTTON:,REJECT_BUTTON:,APPROVED_TEXT:,REJECTED_TEXT:,TIMEOUT_TEXT:,ALLOW_RETRY_ON_TIMEOUT:,RETRY_BUTTON:
 
 VALID_ARGS=$(getopt --longoptions $LONGOPTS -- "$@")
 if [[ $? -ne 0 ]]; then
@@ -66,6 +68,14 @@ while true; do
       TIMEOUT_TEXT="$2"
       shift 2
       ;;
+    --ALLOW_RETRY_ON_TIMEOUT)
+      ALLOW_RETRY_ON_TIMEOUT="$2"
+      shift 2
+      ;;
+    --RETRY_BUTTON)
+      RETRY_BUTTON="$2"
+      shift 2
+      ;;
     --)
       shift
       break
@@ -111,7 +121,7 @@ generate_random_string() {
 }
 
 SESSION_ID=$(generate_random_string)
-echo $"Session ID: $SESSION_ID"
+echo "Session ID: $SESSION_ID"
 
 MESSAGE_ID=""
 
@@ -146,17 +156,23 @@ getUpdates() {
         "allowed_updates": ["callback_query"]
     }')
   
-  # search for a:$SESSION_ID or r:$SESSION_ID as: "data": "r:xxxxxxxxx"
+  # search for a:$SESSION_ID, r:$SESSION_ID, or t:$SESSION_ID as: "data": "r:xxxxxxxxx"
   local DATA=$(echo $UPDATES | awk -F '"data":' '{print $2}' | awk -F '}' '{print $1}')
   local APPROVE=$(echo $DATA | grep -o "a:$SESSION_ID")
   local REJECT=$(echo $DATA | grep -o "r:$SESSION_ID")
+  local RETRY=""
+  if [ "$ALLOW_RETRY_ON_TIMEOUT" = "true" ]; then
+    RETRY=$(echo $DATA | grep -o "t:$SESSION_ID")
+  fi
 
-  if [ -z "$APPROVE" ] && [ -z "$REJECT" ]; then
+  if [ -z "$APPROVE" ] && [ -z "$REJECT" ] && [ -z "$RETRY" ]; then
     echo 0
   elif [ -n "$APPROVE" ]; then
     echo 1
   elif [ -n "$REJECT" ]; then
     echo 2
+  elif [ -n "$RETRY" ]; then
+    echo 3
   fi
 }
 
@@ -172,32 +188,95 @@ updateMessage() {
     }'
 }
 
+updateMessageClearButtons() {
+  local text="$1"
+
+  curl -s --location --request POST "https://api.telegram.org/bot$TELEGRAM_KEY/editMessageText" \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "chat_id": "'"$TELEGRAM_CHAT_ID"'",
+        "message_id": "'"$MESSAGE_ID"'",
+        "text": "'"$text"'",
+        "reply_markup": {"inline_keyboard": []}
+    }'
+}
+
+updateMessageWithRetryButton() {
+  local text="$1"
+
+  curl -s --location --request POST "https://api.telegram.org/bot$TELEGRAM_KEY/editMessageText" \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "chat_id": "'"$TELEGRAM_CHAT_ID"'",
+        "message_id": "'"$MESSAGE_ID"'",
+        "text": "'"$text"'",
+        "reply_markup": {
+            "inline_keyboard": [
+                [
+                    {"text": "'"$RETRY_BUTTON"'", "callback_data": "t:'"$SESSION_ID"'"}
+                ]
+            ]
+        }
+    }'
+}
+
 # Send message
 sendMessage
 
-# Wainting for approve or reject
+# Waiting for approve or reject
 UPDATE_REQUESTS_COUNTER=0
+STATE="waiting"
 while true; do
   RESULT=$(getUpdates)
   echo "Result: $RESULT"
 
   if [ $RESULT -eq 1 ]; then
     echo "Approved"
-    updateMessage "$APPROVED_TEXT"
+    updateMessageClearButtons "$APPROVED_TEXT"
     exit 0
   elif [ $RESULT -eq 2 ]; then
     echo "Rejected"
-    updateMessage "$REJECTED_TEXT"
+    updateMessageClearButtons "$REJECTED_TEXT"
     exit 1
+  elif [ $RESULT -eq 3 ]; then
+    if [ "$STATE" = "timeout" ]; then
+      echo "Retry requested"
+      updateMessageClearButtons "$TIMEOUT_TEXT"
+      SESSION_ID=$(generate_random_string)
+      echo "Session ID: $SESSION_ID"
+      sendMessage
+      STATE="waiting"
+      UPDATE_REQUESTS_COUNTER=0
+      continue
+    fi
   fi
 
-  if [ $UPDATE_REQUESTS_COUNTER -gt $UPDATE_REQUESTS ]; then
-    echo "Update requests limit reached"
-    updateMessage "$TIMEOUT_TEXT"
-    exit 1
+  if [ "$STATE" = "waiting" ]; then
+    if [ $UPDATE_REQUESTS_COUNTER -gt $UPDATE_REQUESTS ]; then
+      echo "Update requests limit reached"
+      if [ "$ALLOW_RETRY_ON_TIMEOUT" = "true" ]; then
+        updateMessageWithRetryButton "$TIMEOUT_TEXT"
+        STATE="timeout"
+        UPDATE_REQUESTS_COUNTER=0
+        continue
+      else
+        updateMessageClearButtons "$TIMEOUT_TEXT"
+        exit 1
+      fi
+    fi
+  else
+    if [ $UPDATE_REQUESTS_COUNTER -gt $UPDATE_REQUESTS ]; then
+      echo "Retry window expired"
+      updateMessageClearButtons "$TIMEOUT_TEXT"
+      exit 1
+    fi
   fi
   UPDATE_REQUESTS_COUNTER=$((UPDATE_REQUESTS_COUNTER + 1))
-  echo "Waiting for approve or reject $UPDATE_REQUESTS_COUNTER/$UPDATE_REQUESTS"
+  if [ "$STATE" = "waiting" ]; then
+    echo "Waiting for approve or reject $UPDATE_REQUESTS_COUNTER/$UPDATE_REQUESTS"
+  else
+    echo "Waiting for retry $UPDATE_REQUESTS_COUNTER/$UPDATE_REQUESTS"
+  fi
 
   sleep 1
 done

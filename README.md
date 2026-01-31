@@ -35,6 +35,8 @@ Configure the inputs to customize the Telegram message:
 - `APPROVED_TEXT`: Message to indicate successful approval.
 - `REJECTED_TEXT`: Message to indicate successful rejection.
 - `TIMEOUT_TEXT`: Message to indicate a timeout if no response is received.
+- `ALLOW_RETRY_ON_TIMEOUT`: If `true`, the action will edit the timed-out message to include a retry button that resends a new approval request.
+- `RETRY_BUTTON`: Text for the retry button shown when `ALLOW_RETRY_ON_TIMEOUT` is enabled.
 - `UPDATE_REQUESTS`: The number of update requests the action will make to check for manual approval or rejection via Telegram. This is not a strict timeout but rather a count of checks, with each request occurring approximately every 1 to 2 seconds.
 
 You can also set a timeout limit for the approval step using `timeout-minutes` in your workflow file:
@@ -52,6 +54,8 @@ Please note that the `TIMEOUT_TEXT` message is specifically related to the `UPDA
 The `timeout-minutes` parameter in your workflow determines the maximum duration that the action will wait for an approval response before the step times out. If this workflow step timeout is reached without an approval or rejection, the action will simply cease to operate and will not send the `TIMEOUT_TEXT` message.
 
 Additionally, the `UPDATE_REQUESTS` input is not a direct timeout setting but rather represents the limit of update checks the action will perform. It is set to a default of 60, which typically corresponds to a duration of 60 to 120 seconds depending on network conditions and server response times, as each update request is expected to occur roughly every 1 to 2 seconds. Adjust the `UPDATE_REQUESTS` value according to how long you want the action to wait for a response in Telegram before considering it a timeout situation and sending the `TIMEOUT_TEXT` message.
+
+If `ALLOW_RETRY_ON_TIMEOUT` is enabled, the action will continue running after the first timeout and wait for a retry click (up to another `UPDATE_REQUESTS` checks). Clicking retry sends a fresh approval request so you can approve without re-running the workflow from GitHub.
 
 ### Permissions
 

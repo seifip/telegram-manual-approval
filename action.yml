@@ -38,8 +38,16 @@ inputs:
     description: 'Text of timeout'
     required: false
     default: 'Timeout!'
+  ALLOW_RETRY_ON_TIMEOUT:
+    description: 'Allow a retry button after timeout to resend approval request'
+    required: false
+    default: 'false'
+  RETRY_BUTTON:
+    description: 'Text of retry button'
+    required: false
+    default: 'Retry'
 runs:
   using: "composite"
   steps:
-    - run: $GITHUB_ACTION_PATH/main.sh --TELEGRAM_KEY ${{ inputs.TELEGRAM_KEY }} --TELEGRAM_CHAT_ID ${{ inputs.TELEGRAM_CHAT_ID }} --UPDATE_REQUESTS ${{ inputs.UPDATE_REQUESTS }} --APPROVAL_TEXT "${{ inputs.APPROVAL_TEXT }}" --APPROVAL_BUTTON "${{ inputs.APPROVAL_BUTTON }}" --REJECT_BUTTON "${{ inputs.REJECT_BUTTON }}" --APPROVED_TEXT "${{ inputs.APPROVED_TEXT }}" --REJECTED_TEXT "${{ inputs.REJECTED_TEXT }}" --TIMEOUT_TEXT "${{ inputs.TIMEOUT_TEXT }}"
+    - run: $GITHUB_ACTION_PATH/main.sh --TELEGRAM_KEY ${{ inputs.TELEGRAM_KEY }} --TELEGRAM_CHAT_ID ${{ inputs.TELEGRAM_CHAT_ID }} --UPDATE_REQUESTS ${{ inputs.UPDATE_REQUESTS }} --APPROVAL_TEXT "${{ inputs.APPROVAL_TEXT }}" --APPROVAL_BUTTON "${{ inputs.APPROVAL_BUTTON }}" --REJECT_BUTTON "${{ inputs.REJECT_BUTTON }}" --APPROVED_TEXT "${{ inputs.APPROVED_TEXT }}" --REJECTED_TEXT "${{ inputs.REJECTED_TEXT }}" --TIMEOUT_TEXT "${{ inputs.TIMEOUT_TEXT }}" --ALLOW_RETRY_ON_TIMEOUT ${{ inputs.ALLOW_RETRY_ON_TIMEOUT }} --RETRY_BUTTON "${{ inputs.RETRY_BUTTON }}"
       shell: bash
