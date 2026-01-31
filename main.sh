@@ -15,10 +15,9 @@ ALLOW_GITHUB_RERUN_ON_TIMEOUT="true"
 RERUN_BUTTON="Rerun workflow"
 RERUN_TEXT="Rerun requested."
 RERUN_FAILED_TEXT="Rerun failed."
-GH_TOKEN=""
 
 # Define long options
-LONGOPTS=TELEGRAM_KEY:,TELEGRAM_CHAT_ID:,UPDATE_REQUESTS:,APPROVAL_TEXT:,APPROVAL_BUTTON:,REJECT_BUTTON:,APPROVED_TEXT:,REJECTED_TEXT:,TIMEOUT_TEXT:,ALLOW_GITHUB_RERUN_ON_TIMEOUT:,RERUN_BUTTON:,RERUN_TEXT:,RERUN_FAILED_TEXT:,GITHUB_TOKEN:
+LONGOPTS=TELEGRAM_KEY:,TELEGRAM_CHAT_ID:,UPDATE_REQUESTS:,APPROVAL_TEXT:,APPROVAL_BUTTON:,REJECT_BUTTON:,APPROVED_TEXT:,REJECTED_TEXT:,TIMEOUT_TEXT:,ALLOW_GITHUB_RERUN_ON_TIMEOUT:,RERUN_BUTTON:,RERUN_TEXT:,RERUN_FAILED_TEXT:
 
 VALID_ARGS=$(getopt --longoptions $LONGOPTS -- "$@")
 if [[ $? -ne 0 ]]; then
@@ -87,10 +86,6 @@ while true; do
       RERUN_FAILED_TEXT="$2"
       shift 2
       ;;
-    --GITHUB_TOKEN)
-      GH_TOKEN="$2"
-      shift 2
-      ;;
     --)
       shift
       break
@@ -141,9 +136,7 @@ echo "Session ID: $SESSION_ID"
 MESSAGE_ID=""
 
 getGithubToken() {
-  if [ -n "$GH_TOKEN" ]; then
-    echo "$GH_TOKEN"
-  elif [ -n "$GITHUB_TOKEN" ]; then
+  if [ -n "$GITHUB_TOKEN" ]; then
     echo "$GITHUB_TOKEN"
   else
     echo ""
