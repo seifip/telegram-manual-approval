@@ -40,6 +40,8 @@ Configure the inputs to customize the Telegram message:
 - `RERUN_TEXT`: Message shown after a rerun request is sent to GitHub.
 - `RERUN_FAILED_TEXT`: Message shown if the rerun request fails.
 - `GITHUB_TOKEN`: GitHub token used to rerun workflows (defaults to the workflow `github.token` if available).
+- `RERUN_WORKFLOW_FILE`: Workflow file to dispatch on rerun (e.g. `deploy.yml`). Optional override if auto-detection fails.
+- `RERUN_REF`: Ref to use for workflow dispatch (branch or tag). Optional override if auto-detection fails.
 - `UPDATE_REQUESTS`: The number of update requests the action will make to check for manual approval or rejection via Telegram. This is not a strict timeout but rather a count of checks, with each request occurring approximately every 1 to 2 seconds.
 
 You can also set a timeout limit for the approval step using `timeout-minutes` in your workflow file:
@@ -58,13 +60,21 @@ The `timeout-minutes` parameter in your workflow determines the maximum duration
 
 Additionally, the `UPDATE_REQUESTS` input is not a direct timeout setting but rather represents the limit of update checks the action will perform. It is set to a default of 60, which typically corresponds to a duration of 60 to 120 seconds depending on network conditions and server response times, as each update request is expected to occur roughly every 1 to 2 seconds. Adjust the `UPDATE_REQUESTS` value according to how long you want the action to wait for a response in Telegram before considering it a timeout situation and sending the `TIMEOUT_TEXT` message.
 
-If `ALLOW_GITHUB_RERUN_ON_TIMEOUT` is enabled, the action will show a rerun button and will call the GitHub API to rerun the current workflow run. This requires a token with `actions: write` permission (the default `github.token` works if you set permissions).
+If `ALLOW_GITHUB_RERUN_ON_TIMEOUT` is enabled, the action will show a rerun button and will attempt a `workflow_dispatch` for the same workflow. It derives the workflow file and ref from the GitHub Actions environment and falls back to the rerun API if dispatch isn't possible. This requires a token with `actions: write` permission (the default `github.token` works if you set permissions).
 
 Example permissions:
 ```yaml
 permissions:
   actions: write
 ```
+
+If the workflow does not include `workflow_dispatch`, add it:
+```yaml
+on:
+  workflow_dispatch:
+```
+
+If auto-detection fails, set `RERUN_WORKFLOW_FILE` and `RERUN_REF` explicitly.
 
 ### Permissions
 
