@@ -60,7 +60,7 @@ The `timeout-minutes` parameter in your workflow determines the maximum duration
 
 Additionally, the `UPDATE_REQUESTS` input is not a direct timeout setting but rather represents the limit of update checks the action will perform. It is set to a default of 60, which typically corresponds to a duration of 60 to 120 seconds depending on network conditions and server response times, as each update request is expected to occur roughly every 1 to 2 seconds. Adjust the `UPDATE_REQUESTS` value according to how long you want the action to wait for a response in Telegram before considering it a timeout situation and sending the `TIMEOUT_TEXT` message.
 
-If `ALLOW_GITHUB_RERUN_ON_TIMEOUT` is enabled, the action will show a rerun button and will attempt a `workflow_dispatch` for the same workflow. It derives the workflow file and ref from the GitHub Actions environment and falls back to the rerun API if dispatch isn't possible. This requires a token with `actions: write` permission (the default `github.token` works if you set permissions).
+If `ALLOW_GITHUB_RERUN_ON_TIMEOUT` is enabled, the action will show a rerun button and will attempt a `workflow_dispatch` for the same workflow. It derives the workflow file and ref from the GitHub Actions environment. This requires a token with `actions: write` permission (the default `github.token` works if you set permissions).
 
 Example permissions:
 ```yaml

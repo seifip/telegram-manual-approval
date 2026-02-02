@@ -342,36 +342,6 @@ rerunFailedMessage() {
   fi
 }
 
-rerunWorkflow() {
-  local token="$1"
-  local status
-
-  if [ -z "$token" ]; then
-    echo "Missing GitHub token for rerun"
-    return 2
-  fi
-  if [ -z "$GITHUB_REPOSITORY" ] || [ -z "$GITHUB_RUN_ID" ]; then
-    echo "Missing GITHUB_REPOSITORY or GITHUB_RUN_ID"
-    return 3
-  fi
-
-  status=$(curl -s -o /dev/null -w "%{http_code}" \
-    --location \
-    --request POST \
-    --header "Authorization: Bearer $token" \
-    --header "Accept: application/vnd.github+json" \
-    --header "X-GitHub-Api-Version: 2022-11-28" \
-    "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/rerun")
-
-  LAST_RERUN_STATUS="$status"
-  if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
-    return 0
-  fi
-
-  echo "Rerun request failed with status $status"
-  return 1
-}
-
 dispatchWorkflow() {
   local token="$1"
   local workflow_file="$2"
@@ -380,14 +350,17 @@ dispatchWorkflow() {
 
   if [ -z "$token" ]; then
     echo "Missing GitHub token for dispatch"
+    LAST_RERUN_STATUS="missing-token"
     return 2
   fi
   if [ -z "$GITHUB_REPOSITORY" ]; then
     echo "Missing GITHUB_REPOSITORY"
+    LAST_RERUN_STATUS="missing-repo"
     return 3
   fi
   if [ -z "$workflow_file" ] || [ -z "$ref" ]; then
     echo "Missing workflow file or ref for dispatch"
+    LAST_RERUN_STATUS="missing-workflow-or-ref"
     return 4
   fi
 
@@ -438,15 +411,11 @@ while true; do
         echo "Attempting workflow dispatch for $workflow_file@$ref"
         if dispatchWorkflow "$token" "$workflow_file" "$ref"; then
           updateMessageClearButtons "$RERUN_TEXT"
-          exit 1
+        else
+          updateMessageClearButtons "$(rerunFailedMessage)"
         fi
       else
-        echo "Workflow dispatch info missing; falling back to rerun"
-      fi
-
-      if rerunWorkflow "$token"; then
-        updateMessageClearButtons "$RERUN_TEXT"
-      else
+        LAST_RERUN_STATUS="missing-workflow-or-ref"
         updateMessageClearButtons "$(rerunFailedMessage)"
       fi
       exit 1
